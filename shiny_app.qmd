@@ -1,0 +1,409 @@
+
+```r
+install.packages("shiny")
+```
+
+## Basic R Shiny App
+
+Create a file named `shiny-app.qmd`:
+
+```yaml
+---
+title: "Interactive Shiny App"
+format: html
+server: shiny
+---
+```
+
+### Simple Interactive Plot
+
+```markdown
+## Interactive Histogram
+
+```{r}
+#| context: setup
+
+library(shiny)
+library(ggplot2)
+```
+
+```{r}
+#| panel: sidebar
+
+sliderInput("bins", "Number of bins:", 
+            min = 5, max = 50, value = 30)
+
+selectInput("color", "Color:",
+            choices = c("steelblue", "darkred", "darkgreen", "purple"))
+
+checkboxInput("show_density", "Show density curve", value = FALSE)
+```
+
+```{r}
+#| panel: fill
+
+plotOutput("histogram")
+```
+
+```{r}
+#| context: server
+
+output$histogram <- renderPlot({
+  p <- ggplot(data.frame(x = mtcars$mpg), aes(x = x)) +
+    geom_histogram(bins = input$bins, fill = input$color, color = "white") +
+    labs(x = "Miles per Gallon", y = "Frequency", 
+         title = "Distribution of MPG") +
+    theme_minimal()
+  
+  if (input$show_density) {
+    p <- p + geom_density(aes(y = after_stat(count)), 
+                          color = "black", linewidth = 1)
+  }
+  
+  p
+})
+```
+```
+
+## Advanced Multi-Tab Data Explorer
+
+```yaml
+---
+title: "Data Explorer App"
+format: html
+server: shiny
+---
+```
+
+```markdown
+## Data Analysis Dashboard
+
+```{r}
+#| context: setup
+
+library(shiny)
+library(ggplot2)
+library(dplyr)
+library(DT)
+```
+
+```{r}
+#| panel: sidebar
+
+selectInput("dataset", "Choose a dataset:",
+            choices = c("mtcars", "iris", "airquality"))
+
+hr()
+
+conditionalPanel(
+  condition = "input.dataset == 'mtcars'",
+  selectInput("x_var", "X Variable:",
+              choices = c("wt", "hp", "disp", "drat"))
+)
+
+conditionalPanel(
+  condition = "input.dataset == 'iris'",
+  selectInput("species", "Species:",
+              choices = c("All", "setosa", "versicolor", "virginica"))
+)
+
+hr()
+
+checkboxInput("show_summary", "Show Summary", value = TRUE)
+```
+
+```{r}
+#| panel: fill
+
+tabsetPanel(
+  tabPanel("Plot",
+           plotOutput("plot", height = "500px")),
+  tabPanel("Data Table",
+           DTOutput("table")),
+  tabPanel("Summary",
+           verbatimTextOutput("summary"))
+)
+```
+
+```{r}
+#| context: server
+
+selected_data <- reactive({
+  df <- switch(input$dataset,
+               "mtcars" = mtcars,
+               "iris" = iris,
+               "airquality" = airquality)
+  
+  # Filter iris by species if selected
+  if (input$dataset == "iris" && input$species != "All") {
+    df <- df %>% filter(Species == input$species)
+  }
+  
+  df
+})
+
+output$summary <- renderPrint({
+  summary(selected_data())
+})
+
+output$table <- renderDT({
+  datatable(selected_data(), 
+            options = list(pageLength = 10, scrollX = TRUE),
+            filter = 'top')
+})
+
+output$plot <- renderPlot({
+  df <- selected_data()
+  
+  if (input$dataset == "mtcars") {
+    ggplot(df, aes_string(x = input$x_var, y = "mpg")) +
+      geom_point(size = 3, color = "steelblue") +
+      geom_smooth(method = "lm", se = TRUE, color = "darkred") +
+      labs(title = paste("MPG vs", input$x_var)) +
+      theme_minimal(base_size = 14)
+  } else if (input$dataset == "iris") {
+    ggplot(df, aes(x = Sepal.Length, y = Sepal.Width, color = Species)) +
+      geom_point(size = 3, alpha = 0.7) +
+      labs(title = "Iris: Sepal Length vs Width") +
+      theme_minimal(base_size = 14)
+  } else {
+    ggplot(df, aes(x = Temp, y = Ozone)) +
+      geom_point(size = 3, color = "darkgreen", alpha = 0.6) +
+      geom_smooth(method = "loess", se = TRUE) +
+      labs(title = "Air Quality: Temperature vs Ozone") +
+      theme_minimal(base_size = 14)
+  }
+})
+```
+```
+
+## Dashboard-Style Shiny App
+
+```yaml
+---
+title: "Sales Dashboard"
+format: 
+  dashboard:
+    orientation: columns
+server: shiny
+---
+```
+
+```markdown
+## Column {width=30%}
+
+```{r}
+#| panel: sidebar
+
+sliderInput("year_range", "Year Range:",
+            min = 2020, max = 2025, value = c(2021, 2024))
+
+selectInput("metric", "Metric:",
+            choices = c("Sales", "Revenue", "Profit", "Growth"))
+
+selectInput("region", "Region:",
+            choices = c("All", "North", "South", "East", "West"))
+
+actionButton("refresh", "Refresh Data", class = "btn-primary")
+```
+
+## Column {width=70%}
+
+```{r}
+#| title: Trend Analysis
+
+plotOutput("trend_plot", height = "400px")
+```
+
+```{r}
+#| title: Summary Statistics
+
+verbatimTextOutput("stats")
+```
+
+```{r}
+#| context: server
+
+# Reactive values that update when refresh is clicked
+data_values <- reactive({
+  input$refresh  # Trigger on button click
+  
+  years <- seq(input$year_range[1], input$year_range[2])
+  set.seed(42 + input$refresh)  # Different seed each refresh
+  
+  values <- cumsum(rnorm(length(years), mean = 1000, sd = 200))
+  
+  data.frame(
+    Year = years,
+    Value = values,
+    Region = input$region
+  )
+})
+
+output$trend_plot <- renderPlot({
+  df <- data_values()
+  
+  ggplot(df, aes(x = Year, y = Value)) +
+    geom_line(color = "steelblue", linewidth = 1.5) +
+    geom_point(color = "steelblue", size = 4) +
+    geom_area(alpha = 0.2, fill = "steelblue") +
+    scale_y_continuous(labels = scales::dollar) +
+    labs(title = paste(input$metric, "Trend"),
+         subtitle = paste("Region:", input$region),
+         y = input$metric) +
+    theme_minimal(base_size = 14)
+})
+
+output$stats <- renderPrint({
+  df <- data_values()
+  
+  cat("Selected Years:", input$year_range[1], "to", input$year_range[2], "\n")
+  cat("Metric:", input$metric, "\n")
+  cat("Region:", input$region, "\n\n")
+  
+  cat("Statistics:\n")
+  cat("  Mean:", scales::dollar(mean(df$Value)), "\n")
+  cat("  Min:", scales::dollar(min(df$Value)), "\n")
+  cat("  Max:", scales::dollar(max(df$Value)), "\n")
+  cat("  Total Change:", scales::dollar(max(df$Value) - min(df$Value)), "\n")
+})
+```
+```
+
+## File Upload Example
+
+```yaml
+---
+title: "CSV Upload and Analysis"
+format: html
+server: shiny
+---
+```
+
+```markdown
+## CSV File Analyzer
+
+```{r}
+#| context: setup
+
+library(shiny)
+library(ggplot2)
+library(dplyr)
+library(DT)
+```
+
+```{r}
+#| panel: sidebar
+
+fileInput("file", "Upload CSV File",
+          accept = c(".csv", "text/csv"))
+
+hr()
+
+uiOutput("column_selector")
+
+sliderInput("n_rows", "Number of rows to display:",
+            min = 5, max = 50, value = 10, step = 5)
+```
+
+```{r}
+#| panel: fill
+
+tabsetPanel(
+  tabPanel("Preview",
+           DTOutput("preview")),
+  tabPanel("Summary",
+           verbatimTextOutput("file_summary")),
+  tabPanel("Visualization",
+           plotOutput("viz", height = "500px"))
+)
+```
+
+```{r}
+#| context: server
+
+# Read uploaded file
+uploaded_data <- reactive({
+  req(input$file)
+  
+  df <- read.csv(input$file$datapath)
+  df
+})
+
+# Dynamic column selector
+output$column_selector <- renderUI({
+  req(uploaded_data())
+  
+  numeric_cols <- names(uploaded_data())[sapply(uploaded_data(), is.numeric)]
+  
+  if (length(numeric_cols) > 0) {
+    selectInput("plot_column", "Select column to plot:",
+                choices = numeric_cols)
+  }
+})
+
+output$preview <- renderDT({
+  req(uploaded_data())
+  
+  datatable(head(uploaded_data(), input$n_rows),
+            options = list(scrollX = TRUE))
+})
+
+output$file_summary <- renderPrint({
+  req(uploaded_data())
+  
+  df <- uploaded_data()
+  
+  cat("Dataset Information:\n")
+  cat("Rows:", nrow(df), "\n")
+  cat("Columns:", ncol(df), "\n\n")
+  
+  cat("Summary:\n")
+  print(summary(df))
+})
+
+output$viz <- renderPlot({
+  req(uploaded_data(), input$plot_column)
+  
+  df <- uploaded_data()
+  
+  ggplot(df, aes_string(x = input$plot_column)) +
+    geom_histogram(bins = 30, fill = "steelblue", color = "white") +
+    labs(title = paste("Distribution of", input$plot_column),
+         x = input$plot_column,
+         y = "Frequency") +
+    theme_minimal(base_size = 14)
+})
+```
+```
+
+## Running Your Shiny App
+
+```bash
+# Run the Shiny app locally with live reload
+quarto preview shiny-app.qmd
+
+# Or render and open
+quarto render shiny-app.qmd
+```
+
+## Deployment Options
+
+```bash
+# Deploy to shinyapps.io
+rsconnect::deployDoc("shiny-app.qmd")
+
+# Deploy to Posit Connect
+quarto publish connect shiny-app.qmd
+
+# Deploy to Quarto Pub (static content only - won't work for Shiny)
+# Use shinyapps.io or Posit Connect for Shiny apps
+```
+
+## Required R Packages
+
+Make sure these packages are installed:
+
+```r
+install.packages(c("shiny", "ggplot2", "dplyr", "DT", "scales"))
+```
